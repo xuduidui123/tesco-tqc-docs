@@ -1,0 +1,13 @@
+*
+!/.gitignore
+!/main.py
+!/streamlit_app.py
+!/requirements.txt
+!/packages.txt
+!/模板_DOO.docx
+!/模板_Reach DOC.docx
+!/模板_SA Form.xlsx
+!/模板_Supplier_DO_CE.docx
+!/模板_Supplier_DO_UK.docx
+!/模板_Tesco_DO_CE.docx
+!/模板_Tesco_DO_UK.docx

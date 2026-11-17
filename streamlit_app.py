@@ -5,7 +5,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 import streamlit as st
 
-from main import (EXCEL_FILE, IMAGE_DIR, OUTPUT_BASE_DIR, PUBLIC_CERTS_DIR,
+from main import (ARTWORK_DIR, EXCEL_FILE, IMAGE_DIR, OUTPUT_BASE_DIR, PUBLIC_CERTS_DIR,
                   TEST_REPORTS_DIR, generate, validate_filename)
 
 
@@ -37,13 +37,15 @@ def clear_result():
 
 
 def app():
-    st.set_page_config(page_title="TQC 文件生成")
-    st.title("TQC 文件生成")
+    st.set_page_config(page_title="TQC 文件生成（优化版）")
+    st.title("TQC 文件生成（优化版）")
     workbook = st.file_uploader("TQC 数据源 Excel", type=["xlsx"], on_change=clear_result)
     images = st.file_uploader("产品图片", type=["png", "jpg", "jpeg"], accept_multiple_files=True,
                               help="文件名须与 Excel 的“产品图片”列一致。", on_change=clear_result)
+    artwork = st.file_uploader("Artwork 文件", accept_multiple_files=True, on_change=clear_result,
+                              help="文件名以完整货号开头。同一货号的多份 Artwork 会一起归档。")
     reports = st.file_uploader("检测报告", type=["pdf"], accept_multiple_files=True,
-                               help="文件名为检测报告号加 .pdf。", on_change=clear_result)
+                               help="支持一款多份报告和多款共用报告。报告号可用换行、逗号或斜线分隔；同号多版本请填完整文件名。", on_change=clear_result)
     certs = st.file_uploader("FSC 证书", type=["pdf"], accept_multiple_files=True,
                              help="按需上传，文件名须与“FSC证书类型”列一致。", on_change=clear_result)
     if st.button("生成 TQC 文件", type="primary", disabled=workbook is None):
@@ -51,7 +53,7 @@ def app():
         try:
             with st.spinner("正在填充模板并转换 PDF…"):
                 st.session_state.result = build_download(workbook, [
-                    (IMAGE_DIR, images), (TEST_REPORTS_DIR, reports), (PUBLIC_CERTS_DIR, certs)])
+                    (IMAGE_DIR, images), (ARTWORK_DIR, artwork), (TEST_REPORTS_DIR, reports), (PUBLIC_CERTS_DIR, certs)])
         except Exception as exc:
             st.error(f"生成失败。{exc}")
     if "result" in st.session_state:

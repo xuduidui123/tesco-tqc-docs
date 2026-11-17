@@ -1,5 +1,7 @@
 import os
 import shutil
+from attachments import copy_artwork, copy_reports, list_files, validate_filename
+
 import pandas as pd
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
@@ -16,6 +18,7 @@ from openpyxl.drawing.image import Image as ExcelImage
 PROJECT = Path(__file__).resolve().parent
 
 EXCEL_FILE = "4. TQC文件数据源.xlsx"
+ARTWORK_DIR = "Artwork合集"
 IMAGE_DIR = "1. Image"
 TEST_REPORTS_DIR = "2. Test Report"  
 PUBLIC_CERTS_DIR = "3. Public_Certs"   
@@ -82,16 +85,10 @@ def fill_sa_form(template_path, output_path, data_dict, img_path=None):
                         cell.value = cell.value.replace(placeholder, value)
     wb.save(output_path)
 
-def validate_filename(value):
-    if value in {"", ".", ".."} or "/" in value or "\\" in value or any(ord(c) < 32 for c in value):
-        raise ValueError(f"无效的文件或目录名称 {value!r}")
-
-
-def generate_row(row, root, scratch, profile, cloud, warnings):
+def generate_row(row, root, scratch, profile, cloud, warnings, artwork_files, report_files):
     raw_context = {str(k): v for k, v in row.to_dict().items()}
     if cloud:
-        for field in ("序号", "中文品名", "文件夹名字", "产品图片", "检测报告号",
-                      "检测报告名字", "英文品名", *(cfg["name_col"] for cfg in TEMPLATES_CONFIG if cfg["name_col"])):
+        for field in ("序号", "中文品名", "文件夹名字", "产品图片", "英文品名", *(cfg["name_col"] for cfg in TEMPLATES_CONFIG if cfg["name_col"])):
             value = raw_context.get(field, "").strip()
             if value:
                 validate_filename(value)
@@ -115,15 +112,9 @@ def generate_row(row, root, scratch, profile, cloud, warnings):
     elif img_name:
         warnings.append(f"缺少产品图 {img_name}")
 
-    # --- 功能②：抓取检测报告 ---
-    report_no = str(raw_context.get('检测报告号', '')).strip()
-    src_report = os.path.join(root / TEST_REPORTS_DIR, f"{report_no}.pdf")
-    final_report_name_base = str(raw_context.get('检测报告名字', '')).strip()
-    if os.path.exists(src_report) and final_report_name_base:
-        shutil.copy(src_report, os.path.join(child_dir, f"{final_report_name_base}.pdf"))
-
-    elif report_no or final_report_name_base:
-        warnings.append(f"检测报告未归档，请核对报告号及输出名称（{report_no or '未填报告号'}）")
+    warnings.extend(copy_artwork(artwork_files, raw_context.get("货号", ""), parent_dir))
+    warnings.extend(copy_reports(report_files, raw_context.get("检测报告号", ""),
+                                 raw_context.get("检测报告名字", ""), child_dir))
 
     # --- 功能③：智能分发公共证书 ---
     fsc_files_str = str(raw_context.get('FSC证书类型', '')).strip()
@@ -214,7 +205,7 @@ def generate(root, *, cloud=False):
     root = Path(root).resolve()
     scratch = root if cloud else Path(OFFICE_SAFE_ZONE)
     scratch.mkdir(parents=True, exist_ok=True)
-    for directory in (OUTPUT_BASE_DIR, TEST_REPORTS_DIR, PUBLIC_CERTS_DIR):
+    for directory in (OUTPUT_BASE_DIR, ARTWORK_DIR, TEST_REPORTS_DIR, PUBLIC_CERTS_DIR):
         (root / directory).mkdir(exist_ok=True)
     df = pd.read_excel(root / EXCEL_FILE, dtype=str, engine="openpyxl", keep_default_na=False)
     if "文件夹名字" not in df:
@@ -222,14 +213,16 @@ def generate(root, *, cloud=False):
     active = df[df["文件夹名字"].str.strip() != ""]
     if active.empty:
         raise ValueError("Excel 中没有填写“文件夹名字”的产品。")
+    artwork_files = list_files(root / ARTWORK_DIR)
+    report_files = [p for p in list_files(root / TEST_REPORTS_DIR) if p.suffix.lower() == ".pdf"]
     issues = []
     for index, row in tqdm(active.iterrows(), total=len(active), disable=cloud):
         warnings = []
         try:
-            generate_row(row, root, scratch, root / "lo-profile", cloud, warnings)
+            generate_row(row, root, scratch, root / "lo-profile", cloud, warnings, artwork_files, report_files)
         except Exception as exc:
             raise RuntimeError(f"Excel 第 {index + 2} 行（{row.get('中文品名', '')}）生成失败：{exc}") from exc
-        issues.extend(f"第 {index + 2} 行：{msg}" for msg in warnings)
+        issues.extend(f"第 {index + 2} 行（{row.get('中文品名', '')}）：{msg}" for msg in warnings)
     return issues
 
 
